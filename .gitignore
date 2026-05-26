@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+chroma_db/
+mlruns/
+evaluation/batch_results.json
+evaluation/ragas_results.json
+locust_results*
+*.log
+deploy/bdm.json
+chroma_test_db/
+restore.py
