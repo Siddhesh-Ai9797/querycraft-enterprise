@@ -1,5 +1,7 @@
 # QueryCraft Enterprise
 
+[![CI](https://github.com/Siddhesh-Ai9797/querycraft-enterprise/actions/workflows/ci.yml/badge.svg)](https://github.com/Siddhesh-Ai9797/querycraft-enterprise/actions/workflows/ci.yml)
+
 Production multi-agent Text-to-SQL platform built on a fine-tuned Phi-3 Mini model.
 Converts natural language questions about a music store database into accurate answers
 with full validation, monitoring, and cloud deployment.
@@ -92,6 +94,19 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 ---
 
+## Tests
+
+```bash
+pip install -r requirements-ci.txt
+python -m pytest -q
+```
+
+Unit tests for the SQL safety rules always run. Database tests run when `DATABASE_URL` points at the Chinook sample database, and OpenAI tests run when `OPENAI_API_KEY` is set. GitHub Actions starts a Postgres service with Chinook on every push, so the validator, executor, schema and monitoring tests all run in CI.
+
+---
+
 ## Related Projects
+
+- **[QueryCraft](https://github.com/Siddhesh-Ai9797/querycraft)** — QLoRA fine tuning, evaluation and model card for the Phi-3 Mini text to SQL model used here
 
 - **[HuggingFace Model](https://huggingface.co/Sid9797/querycraft-phi3-sql)** — Published adapter weights
