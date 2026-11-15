@@ -38,12 +38,10 @@ merge_image = (
     .add_local_file("scripts/merge_adapter.py", "/root/merge_adapter.py")
 )
 
-vllm_image = (
-    modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="3.12")
-    .entrypoint([])
-    .pip_install("vllm==0.10.2", "huggingface_hub[hf_transfer]")
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
-)
+# vLLM's own image, so every library is the exact version vLLM was tested with.
+# Installing vllm with pip pulled in transformers 5 and openai 3, which this
+# vLLM release was never tested against.
+vllm_image = modal.Image.from_registry("vllm/vllm-openai:v0.10.2").entrypoint([])
 
 
 @app.function(image=merge_image, volumes={"/models": volume, "/root/.cache/huggingface": hf_cache},
