@@ -1,4 +1,8 @@
-import torch
+# torch must be imported before onnxruntime on Windows, or CUDA DLLs clash.
+try:
+    import torch  # noqa: F401
+except ImportError:
+    pass
 import os
 import time
 from contextlib import asynccontextmanager
@@ -43,7 +47,7 @@ class QueryResponse(BaseModel):
     flagged:        Optional[bool]  = None
 
 class HealthResponse(BaseModel):
-    status: str; model: str; version: str; uptime_sec: float
+    status: str; model: str; sql_backend: str; version: str; uptime_sec: float
 
 @app.get("/")
 def root():
@@ -54,7 +58,9 @@ def root():
 def health_check():
     if pipeline is None or not pipeline._initialized:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
-    return HealthResponse(status="healthy", model="querycraft-phi3-sql",
+    backend = pipeline.inference_backend
+    model = "gpt-3.5-turbo baseline" if backend == "openai" else "querycraft-phi3-sql (fine tuned)"
+    return HealthResponse(status="healthy", model=model, sql_backend=backend,
                           version="1.0.0", uptime_sec=round(time.time()-_start_time, 1))
 
 @app.post("/query", response_model=QueryResponse)

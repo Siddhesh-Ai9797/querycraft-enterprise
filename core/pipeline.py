@@ -1,4 +1,8 @@
-import torch
+# torch must be imported before onnxruntime on Windows, or CUDA DLLs clash.
+try:
+    import torch  # noqa: F401
+except ImportError:
+    pass
 import os
 import time
 import mlflow
@@ -9,6 +13,29 @@ from core.quality_monitor import QualityMonitor
 load_dotenv()
 
 MAX_RETRIES = 2
+
+
+def make_sql_adapter(backend: str):
+    """
+    local     fine tuned Phi-3 with the LoRA adapter, in 4-bit on a local GPU
+    vllm      fine tuned model served by vLLM, see deploy/vllm.md
+    modal     fine tuned model on a Modal GPU, see deploy/modal_app.py
+    llamacpp  fine tuned model as a 4-bit GGUF on CPU, see deploy/llamacpp.md
+    openai    OpenAI model, gpt-3.5-turbo by default, used as the baseline
+    """
+    if backend == "openai":
+        from core.production_adapter import ProductionQueryAdapter
+        print("  SQL model: OpenAI baseline")
+        return ProductionQueryAdapter()
+    if backend in ("vllm", "modal", "llamacpp"):
+        from core.remote_sql_adapter import RemoteSQLAdapter
+        print(f"  SQL model: fine tuned Phi-3 Mini on {backend}")
+        return RemoteSQLAdapter(backend)
+    if backend == "local":
+        from core.querycraft_adapter import QueryCraftAdapter
+        print("  SQL model: fine tuned Phi-3 Mini, local GPU")
+        return QueryCraftAdapter()
+    raise ValueError(f"Unknown INFERENCE_BACKEND {backend}")
 
 class QueryCraftPipeline:
     def __init__(self):
@@ -22,15 +49,8 @@ class QueryCraftPipeline:
         self.executor        = SQLExecutorAgent(engine)
         self.synthesizer     = AnswerSynthesizerAgent()
         self.quality_monitor = QualityMonitor()
-        inference_backend = os.getenv("INFERENCE_BACKEND", "local")
-        if inference_backend == "openai":
-            from core.production_adapter import ProductionQueryAdapter
-            self.adapter = ProductionQueryAdapter()
-            print("  Using production adapter (GPT-3.5-turbo)")
-        else:
-            from core.querycraft_adapter import QueryCraftAdapter
-            self.adapter = QueryCraftAdapter()
-            print("  Using local adapter (Phi-3 Mini)")
+        self.inference_backend = os.getenv("INFERENCE_BACKEND", "local")
+        self.adapter = make_sql_adapter(self.inference_backend)
         mlflow.set_tracking_uri("./mlruns")
         mlflow.set_experiment("querycraft-enterprise")
         self._initialized = False
@@ -55,6 +75,7 @@ class QueryCraftPipeline:
         pipeline_start = time.time()
         with mlflow.start_run(run_name=f"query_{int(time.time())}"):
             mlflow.log_param("question", question[:250])
+            mlflow.log_param("sql_backend", self.inference_backend)
             schema_result  = self._schema_step.invoke({"question": question})
             mlflow.log_param("tables_used", str(schema_result["tables_used"]))
             schema         = schema_result["schema"]
