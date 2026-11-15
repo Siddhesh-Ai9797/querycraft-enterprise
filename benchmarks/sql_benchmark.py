@@ -19,6 +19,12 @@ Examples:
     python benchmarks/sql_benchmark.py --backends modal -n 500
 Results go to benchmarks/results/.
 """
+# torch must load before datasets and onnxruntime on Windows, or its DLLs fail
+# with WinError 1114. Same rule as core/pipeline.py.
+try:
+    import torch  # noqa: F401
+except ImportError:
+    pass
 import argparse
 import json
 import os

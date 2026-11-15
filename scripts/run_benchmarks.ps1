@@ -39,9 +39,9 @@ function Must($what) {
 # Benchmarks keep going if one fails, so one broken backend doesn't lose the rest.
 function Pipeline-Evals($backend) {
   $env:INFERENCE_BACKEND = $backend
-  python evaluation/batch_evaluator.py
+  python evaluation/batch_evaluator.py 2>&1 | Out-Host
   if ($LASTEXITCODE -ne 0) { Write-Host "Pipeline test failed for $backend, continuing" -ForegroundColor Yellow }
-  python evaluation/ragas_evaluator.py
+  python evaluation/ragas_evaluator.py 2>&1 | Out-Host
   if ($LASTEXITCODE -ne 0) { Write-Host "RAGAS failed for $backend, continuing" -ForegroundColor Yellow }
 }
 
@@ -66,7 +66,7 @@ if (-not (Test-Path "models/querycraft-phi3-q4_k_m.gguf")) {
 
 if ($Skip -notcontains "local") {
   Step "Original setup: transformers, 4-bit, adapter on top"
-  python benchmarks/sql_benchmark.py --backends local -n $N
+  python benchmarks/sql_benchmark.py --backends local -n $N 2>&1 | Out-Host
   Pipeline-Evals "local"
 }
 
