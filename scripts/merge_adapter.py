@@ -31,6 +31,10 @@ def merge(out_dir: str, device: str = "auto") -> str:
     os.makedirs(out_dir, exist_ok=True)
     model.save_pretrained(out_dir, safe_serialization=True)
     AutoTokenizer.from_pretrained(BASE_MODEL_ID).save_pretrained(out_dir)
+    # llama.cpp's converter reads Phi-3's vocabulary from the original
+    # sentencepiece file, which the fast tokenizer does not always save.
+    from huggingface_hub import hf_hub_download
+    hf_hub_download(BASE_MODEL_ID, "tokenizer.model", local_dir=out_dir)
     print(f"✅ Merged model saved to {out_dir}")
     return out_dir
 
