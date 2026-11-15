@@ -8,9 +8,9 @@
 #      and MODAL_URL plus MODAL_API_KEY in .env.
 #   5. Nothing else is using the GPU, such as a training run.
 #
-# Run from the repo root:
-#   powershell -ExecutionPolicy Bypass -File scripts\run_benchmarks.ps1
-#   powershell -ExecutionPolicy Bypass -File scripts\run_benchmarks.ps1 -N 200 -Skip modal
+# Run from the repo root, with -NoProfile so your conda env stays active:
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_benchmarks.ps1
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_benchmarks.ps1 -N 200 -Skip modal
 param(
   [int]$N = 500,
   [string[]]$Skip = @()
@@ -31,22 +31,37 @@ function Wait-Server($url, $seconds) {
   throw "Server at $url did not start in $seconds seconds"
 }
 
+# Stops the whole run if a setup step fails, instead of carrying on.
+function Must($what) {
+  if ($LASTEXITCODE -ne 0) { Stop-Transcript | Out-Null; throw "$what failed, stopping." }
+}
+
+# Benchmarks keep going if one fails, so one broken backend doesn't lose the rest.
 function Pipeline-Evals($backend) {
   $env:INFERENCE_BACKEND = $backend
   python evaluation/batch_evaluator.py
+  if ($LASTEXITCODE -ne 0) { Write-Host "Pipeline test failed for $backend, continuing" -ForegroundColor Yellow }
   python evaluation/ragas_evaluator.py
+  if ($LASTEXITCODE -ne 0) { Write-Host "RAGAS failed for $backend, continuing" -ForegroundColor Yellow }
 }
 
-Step "Install packages"
-pip install -q -r requirements.txt modal datasets
+Step "Check Python environment"
+python -c "import sys; print('Python:', sys.executable)"
+python -c "import torch, transformers, peft, mlflow, sqlalchemy; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
+Must "Finding torch, transformers, peft, mlflow and sqlalchemy. Run conda activate ai-env and use -NoProfile"
+# Only the two packages this benchmark adds. Your env already has the rest.
+pip install -q datasets modal
+Must "Installing datasets and modal"
 
 if (-not (Test-Path "models/querycraft-phi3-merged/config.json")) {
   Step "Merge adapter into Phi-3 Mini"
   python scripts/merge_adapter.py
+  Must "Merging the adapter"
 }
 if (-not (Test-Path "models/querycraft-phi3-q4_k_m.gguf")) {
   Step "Make 4-bit GGUF for llama.cpp"
-  powershell -ExecutionPolicy Bypass -File deploy/make_gguf.ps1
+  powershell -NoProfile -ExecutionPolicy Bypass -File deploy/make_gguf.ps1
+  Must "Making the GGUF file"
 }
 
 if ($Skip -notcontains "local") {
