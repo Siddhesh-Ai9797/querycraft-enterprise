@@ -59,7 +59,21 @@ flowchart TD
 5. **Answer.** The query runs on the Chinook database, and GPT-3.5-turbo turns the rows into a plain answer.
 6. **Score.** A quality score combines model confidence, how complete the result looks, and query complexity. Answers under 0.6 are flagged, and everything is logged to MLflow and shown on a Streamlit dashboard.
 
-The SQL generator has two backends. Locally it runs the fine tuned Phi-3 Mini on a GPU. The AWS deployment runs on a CPU instance, so it sets `INFERENCE_BACKEND=openai` and generates SQL with GPT-3.5-turbo through the same pipeline.
+## Serving the fine tuned model
+
+The SQL generator can run the fine tuned Phi-3 Mini four ways, chosen with `INFERENCE_BACKEND`. GPT-3.5-turbo stays available as `openai`, the baseline every option is measured against.
+
+| Backend | Where it runs | How |
+|---|---|---|
+| `local` | Your own GPU | transformers, 4-bit base model with the LoRA adapter on top |
+| `vllm` | Your own GPU, in Docker | Merged model served by vLLM, see `deploy/docker-compose.serving.yml` |
+| `llamacpp` | 2 CPU cores | 4-bit GGUF served by llama.cpp, see `deploy/make_gguf.ps1` |
+| `modal` | Modal L4 GPU that scales to zero | Merged model served by vLLM, see `deploy/modal_app.py` |
+| `openai` | OpenAI | gpt-3.5-turbo baseline |
+
+`scripts/merge_adapter.py` folds the adapter into the base model once, since vLLM and llama.cpp need one merged model. All remote backends send the exact raw prompt the model was trained on to an OpenAI compatible `/v1/completions` endpoint.
+
+`benchmarks/sql_benchmark.py` tests every backend on the same held out questions for exact match, execution accuracy, latency, throughput and cost per 1,000 queries. `scripts/run_benchmarks.ps1` runs the whole set, plus the 20 question pipeline test and RAGAS, for each backend.
 
 ## Design decisions
 

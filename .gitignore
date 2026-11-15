@@ -10,3 +10,5 @@ locust_results*
 deploy/bdm.json
 chroma_test_db/
 restore.py
+models/
+benchmarks/results/*.log

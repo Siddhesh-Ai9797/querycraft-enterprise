@@ -1,0 +1,34 @@
+# Serves the merged fine tuned model two ways for the benchmark.
+# Run from the repo root after scripts/merge_adapter.py and deploy/make_gguf.ps1:
+#   docker compose -f deploy/docker-compose.serving.yml up -d vllm
+#   docker compose -f deploy/docker-compose.serving.yml up -d llamacpp
+services:
+  vllm:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.10.2}
+    command: >
+      --model /models/querycraft-phi3-merged
+      --served-model-name querycraft-sql
+      --max-model-len 2048
+      --gpu-memory-utilization 0.80
+      --port 8000
+    ports: ["8001:8000"]
+    volumes: ["../models:/models"]
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: all, capabilities: [gpu]}]
+
+  llamacpp:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    # 2 CPU cores and 8 GB of memory, the size of an AWS t3.large, so the
+    # numbers match what a CPU cloud server would really give.
+    command: >
+      -m /models/querycraft-phi3-q4_k_m.gguf
+      --alias querycraft-sql
+      -c 2048 -t 2 --parallel 2
+      --host 0.0.0.0 --port 8080
+    ports: ["8002:8080"]
+    volumes: ["../models:/models"]
+    cpus: 2
+    mem_limit: 8g

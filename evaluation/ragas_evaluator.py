@@ -51,6 +51,7 @@ def run_ragas_evaluation():
     mlflow.set_experiment("querycraft-enterprise-ragas")
     with mlflow.start_run(run_name="ragas_querycraft"):
         mlflow.log_param("model", "querycraft-enterprise")
+        mlflow.log_param("sql_backend", os.getenv("INFERENCE_BACKEND", "local"))
         mlflow.log_param("n_questions", len(EVAL_QUESTIONS))
         mlflow.log_metric("answer_relevancy", scores["answer_relevancy"])
         mlflow.log_metric("faithfulness", scores["faithfulness"])
@@ -62,6 +63,13 @@ def run_ragas_evaluation():
     print(f"  Faithfulness     : {scores['faithfulness']:.3f}")
     print(f"  Context Precision: {scores['context_precision']:.3f}")
     print(f"{'='*50}")
+    backend = os.getenv("INFERENCE_BACKEND", "local")
+    os.makedirs("benchmarks/results", exist_ok=True)
+    with open(f"benchmarks/results/ragas_{backend}.json", "w") as f:
+        json.dump({"backend": backend, "n_questions": len(EVAL_QUESTIONS),
+                   "answer_relevancy": float(scores["answer_relevancy"]),
+                   "faithfulness": float(scores["faithfulness"]),
+                   "context_precision": float(scores["context_precision"])}, f, indent=2)
     return scores
 
 if __name__ == "__main__":

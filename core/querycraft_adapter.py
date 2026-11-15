@@ -7,14 +7,10 @@ import time
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
+from core.sql_text import SYSTEM_PROMPT, build_prompt, clean_sql
 
 BASE_MODEL_ID = "microsoft/Phi-3-mini-4k-instruct"
 ADAPTER_ID    = "Sid9797/querycraft-phi3-sql"
-SYSTEM_PROMPT = (
-    "You are a SQL expert. Given a database schema and a natural language "
-    "question, generate a valid SQL query that answers the question. "
-    "Output only the SQL query with no explanation."
-)
 
 class QueryCraftAdapter:
     def __init__(self):
@@ -47,12 +43,7 @@ class QueryCraftAdapter:
     def generate(self, question: str, schema: str) -> dict:
         if not self._loaded:
             self.load()
-        prompt = (
-            f"### System:\n{SYSTEM_PROMPT}\n\n"
-            f"### Schema:\n{schema}\n\n"
-            f"### Question:\n{question}\n\n"
-            f"### SQL:\n"
-        )
+        prompt = build_prompt(question, schema)
         inputs        = self.tokenizer(prompt, return_tensors="pt").to("cuda")
         prompt_tokens = inputs["input_ids"].shape[1]
         start = time.time()
@@ -69,19 +60,4 @@ class QueryCraftAdapter:
         return {"sql": sql, "latency_ms": latency_ms, "prompt_tokens": prompt_tokens, "raw_output": raw_output}
 
     def _clean_sql(self, raw_output: str) -> str:
-        if not raw_output or not raw_output.strip():
-            return ""
-        lines = raw_output.strip().split("\n")
-        sql_lines = []
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                if sql_lines:
-                    break
-                continue
-            sql_lines.append(stripped)
-            if stripped.endswith(";"):
-                break
-        sql = " ".join(sql_lines).strip()
-        sql = re.sub(r'"([^"]*)"', r"\'\1\'", sql)
-        return sql
+        return clean_sql(raw_output)

@@ -55,8 +55,19 @@ def run_batch_evaluation():
         time.sleep(0.5)
     print("\n" + "=" * 60)
     print(f"  Passed: {passed}  Failed: {failed}  Success rate: {passed/len(EVAL_QUESTIONS)*100:.1f}%")
-    with open("evaluation/batch_results.json", "w") as f:
-        json.dump(results, f, indent=2, default=str)
+    backend = os.getenv("INFERENCE_BACKEND", "local")
+    os.makedirs("benchmarks/results", exist_ok=True)
+    latencies = sorted(r["total_ms"] for r in results if r.get("total_ms"))
+    summary = {
+        "backend": backend, "questions": len(EVAL_QUESTIONS), "passed": passed,
+        "success_pct": round(100 * passed / len(EVAL_QUESTIONS), 1),
+        "keyword_match_pct": round(100 * sum(1 for r in results if r.get("success") and r.get("keyword_match")) / len(EVAL_QUESTIONS), 1),
+        "avg_attempts": round(sum(r.get("attempts", 0) for r in results) / len(results), 2),
+        "p50_ms": latencies[len(latencies) // 2] if latencies else None,
+    }
+    print(f"  Summary: {summary}")
+    with open(f"benchmarks/results/pipeline_{backend}.json", "w") as f:
+        json.dump({"summary": summary, "results": results}, f, indent=2, default=str)
     print("=" * 60)
     return results
 
