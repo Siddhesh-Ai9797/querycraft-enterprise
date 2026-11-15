@@ -38,10 +38,22 @@ merge_image = (
     .add_local_file("scripts/merge_adapter.py", "/root/merge_adapter.py")
 )
 
-# vLLM's own image, so every library is the exact version vLLM was tested with.
-# Installing vllm with pip pulled in transformers 5 and openai 3, which this
-# vLLM release was never tested against.
-vllm_image = modal.Image.from_registry("vllm/vllm-openai:v0.10.2").entrypoint([])
+# vLLM with its main libraries pinned to versions from the same month as this
+# vLLM release. Unpinned, pip pulls transformers 5 and openai 3, which vLLM
+# 0.10.2 was never tested with. (vLLM's own Docker image can't be used here:
+# Modal can't find Python in it.)
+vllm_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .pip_install(
+        "vllm==0.10.2",
+        "transformers==4.56.2",
+        "tokenizers==0.22.1",
+        "huggingface_hub==0.35.3",
+        "openai==1.109.1",
+        "fastapi==0.116.1",
+        "pydantic==2.11.9",
+    )
+)
 
 
 @app.function(image=merge_image, volumes={"/models": volume, "/root/.cache/huggingface": hf_cache},
