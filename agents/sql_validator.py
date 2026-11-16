@@ -36,10 +36,14 @@ class SQLValidatorAgent:
 
     def _check_explain(self, sql):
         try:
+            # Transaction object rollback works on SQLAlchemy 1.4 and 2.0;
+            # Connection.rollback() only exists in 2.0.
             with self.engine.connect() as conn:
-                with conn.begin():
+                trans = conn.begin()
+                try:
                     conn.execute(text(f"EXPLAIN {sql}"))
-                    conn.rollback()
+                finally:
+                    trans.rollback()
             return self._pass(sql)
         except ProgrammingError as e:
             return self._fail(f"SQL validation failed: {self._clean_pg_error(str(e))}", "explain")
