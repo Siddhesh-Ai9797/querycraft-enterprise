@@ -23,6 +23,11 @@ $ErrorActionPreference = "Continue"
 $Skip = @(($Skip -join ",").Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 # This project never uses TensorFlow; skip a broken install if one is present.
 $env:USE_TF = "0"; $env:USE_JAX = "0"; $env:TRANSFORMERS_NO_TF = "1"
+# Piped Python output falls back to the old Windows cp1252 encoding, which can't
+# print the emoji in the code's status lines and crashes. Force UTF-8.
+$env:PYTHONUTF8 = "1"; $env:PYTHONIOENCODING = "utf-8"
+# Quiet two harmless warnings that otherwise flood the log.
+$env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"; $env:ANONYMIZED_TELEMETRY = "False"
 $compose = "deploy/docker-compose.serving.yml"
 $log = "benchmarks/results/run_$(Get-Date -Format yyyyMMdd-HHmm).log"
 New-Item -ItemType Directory -Force benchmarks/results | Out-Null
