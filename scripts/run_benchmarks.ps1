@@ -15,7 +15,12 @@ param(
   [int]$N = 500,
   [string[]]$Skip = @()
 )
-$ErrorActionPreference = "Stop"
+# Continue, not Stop: Windows PowerShell treats any line Python writes to stderr
+# (even a warning) as an error once it is piped, which would end the run.
+# Setup steps are checked with Must instead.
+$ErrorActionPreference = "Continue"
+# powershell -File passes "-Skip vllm,llamacpp" as one string, so split it here.
+$Skip = @(($Skip -join ",").Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 # This project never uses TensorFlow; skip a broken install if one is present.
 $env:USE_TF = "0"; $env:USE_JAX = "0"; $env:TRANSFORMERS_NO_TF = "1"
 $compose = "deploy/docker-compose.serving.yml"
