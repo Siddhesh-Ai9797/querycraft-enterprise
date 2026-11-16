@@ -13,7 +13,7 @@ Confidence: 0.95+ = complete, 0.80+ = partial, 0.30+ = empty/wrong"""
 class AnswerSynthesizerAgent:
     def __init__(self):
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model  = "gpt-3.5-turbo"
+        self.model  = os.getenv("ANSWER_MODEL", "gpt-4o-mini")  # gpt-3.5-turbo was retired by OpenAI
 
     def synthesize(self, question: str, sql: str, execution_result: dict) -> dict:
         if not execution_result["success"]:

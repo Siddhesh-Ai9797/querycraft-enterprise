@@ -1,3 +1,9 @@
+import os
+# This project never uses TensorFlow or JAX. Telling transformers so avoids
+# loading a broken TensorFlow install that may sit in the same environment.
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("USE_JAX", "0")
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 import os, sys, time, json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.pipeline import QueryCraftPipeline

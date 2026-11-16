@@ -61,7 +61,7 @@ flowchart TD
 
 ## Serving the fine tuned model
 
-The SQL generator can run the fine tuned Phi-3 Mini four ways, chosen with `INFERENCE_BACKEND`. GPT-3.5-turbo stays available as `openai`, the baseline every option is measured against.
+The SQL generator can run the fine tuned Phi-3 Mini four ways, chosen with `INFERENCE_BACKEND`. gpt-4o-mini is available as `openai`, the baseline every option is measured against. OpenAI has retired gpt-3.5-turbo.
 
 | Backend | Where it runs | How |
 |---|---|---|
@@ -69,7 +69,7 @@ The SQL generator can run the fine tuned Phi-3 Mini four ways, chosen with `INFE
 | `vllm` | Your own GPU, in Docker | Merged model served by vLLM, see `deploy/docker-compose.serving.yml` |
 | `llamacpp` | 2 CPU cores | 4-bit GGUF served by llama.cpp, see `deploy/make_gguf.ps1` |
 | `modal` | Modal L4 GPU that scales to zero | Merged model served by vLLM, see `deploy/modal_app.py` |
-| `openai` | OpenAI | gpt-3.5-turbo baseline |
+| `openai` | OpenAI | gpt-4o-mini baseline |
 
 `scripts/merge_adapter.py` folds the adapter into the base model once, since vLLM and llama.cpp need one merged model. All remote backends send the exact raw prompt the model was trained on to an OpenAI compatible `/v1/completions` endpoint.
 

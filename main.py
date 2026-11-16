@@ -1,3 +1,9 @@
+import os
+# This project never uses TensorFlow or JAX. Telling transformers so avoids
+# loading a broken TensorFlow install that may sit in the same environment.
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("USE_JAX", "0")
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 # torch must be imported before onnxruntime on Windows, or CUDA DLLs clash.
 try:
     import torch  # noqa: F401
@@ -59,7 +65,7 @@ def health_check():
     if pipeline is None or not pipeline._initialized:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     backend = pipeline.inference_backend
-    model = "gpt-3.5-turbo baseline" if backend == "openai" else "querycraft-phi3-sql (fine tuned)"
+    model = f"{os.getenv('OPENAI_SQL_MODEL', 'gpt-4o-mini')} baseline" if backend == "openai" else "querycraft-phi3-sql (fine tuned)"
     return HealthResponse(status="healthy", model=model, sql_backend=backend,
                           version="1.0.0", uptime_sec=round(time.time()-_start_time, 1))
 

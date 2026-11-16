@@ -16,6 +16,8 @@ param(
   [string[]]$Skip = @()
 )
 $ErrorActionPreference = "Stop"
+# This project never uses TensorFlow; skip a broken install if one is present.
+$env:USE_TF = "0"; $env:USE_JAX = "0"; $env:TRANSFORMERS_NO_TF = "1"
 $compose = "deploy/docker-compose.serving.yml"
 $log = "benchmarks/results/run_$(Get-Date -Format yyyyMMdd-HHmm).log"
 New-Item -ItemType Directory -Force benchmarks/results | Out-Null
@@ -72,8 +74,8 @@ if ($Skip -notcontains "local") {
 
 if ($Skip -notcontains "openai") {
   Step "OpenAI baselines"
-  python benchmarks/sql_benchmark.py --backends "gpt-3.5-turbo,gpt-4o-mini" -n $N
-  $env:OPENAI_SQL_MODEL = "gpt-3.5-turbo"
+  python benchmarks/sql_benchmark.py --backends gpt-4o-mini -n $N 2>&1 | Out-Host
+  $env:OPENAI_SQL_MODEL = "gpt-4o-mini"
   Pipeline-Evals "openai"
 }
 

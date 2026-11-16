@@ -6,7 +6,7 @@ load_dotenv()
 
 from core.sql_text import build_prompt, clean_sql
 
-OPENAI_SQL_MODEL = os.getenv("OPENAI_SQL_MODEL", "gpt-3.5-turbo")
+OPENAI_SQL_MODEL = os.getenv("OPENAI_SQL_MODEL", "gpt-4o-mini")
 
 class ProductionQueryAdapter:
     def __init__(self):
