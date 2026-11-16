@@ -1,3 +1,9 @@
+import os
+# This project never uses TensorFlow or JAX. Telling transformers so avoids
+# loading a broken TensorFlow install that may sit in the same environment.
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("USE_JAX", "0")
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 # torch must be imported before onnxruntime on Windows, or CUDA DLLs clash.
 try:
     import torch  # noqa: F401
@@ -21,7 +27,7 @@ def make_sql_adapter(backend: str):
     vllm      fine tuned model served by vLLM, see deploy/vllm.md
     modal     fine tuned model on a Modal GPU, see deploy/modal_app.py
     llamacpp  fine tuned model as a 4-bit GGUF on CPU, see deploy/llamacpp.md
-    openai    OpenAI model, gpt-3.5-turbo by default, used as the baseline
+    openai    OpenAI model, gpt-4o-mini by default, used as the baseline
     """
     if backend == "openai":
         from core.production_adapter import ProductionQueryAdapter

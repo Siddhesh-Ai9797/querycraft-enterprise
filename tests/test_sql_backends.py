@@ -94,3 +94,11 @@ def test_wrong_model_name_is_caught_on_load(fake_openai):
     adapter = RemoteSQLAdapter("llamacpp", model="something-else")
     with pytest.raises(RuntimeError):
         adapter.load()
+
+
+def test_benchmark_scores_the_whole_statement():
+    from benchmarks.sql_benchmark import full_statement, normalize
+    raw = "```sql\nSELECT MIN(game)\nFROM table_name_61\nWHERE opponent = 'phoenix';\n```"
+    assert full_statement(raw) == "SELECT MIN(game) FROM table_name_61 WHERE opponent = 'phoenix'"
+    assert full_statement(" SELECT a FROM t\n\nextra text") == "SELECT a FROM t"
+    assert normalize("SELECT a  FROM t;") == normalize("select a from t")

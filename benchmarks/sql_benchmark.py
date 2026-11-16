@@ -1,3 +1,9 @@
+import os
+# This project never uses TensorFlow or JAX. Telling transformers so avoids
+# loading a broken TensorFlow install that may sit in the same environment.
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("USE_JAX", "0")
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 """
 Fresh SQL benchmark for every way QueryCraft can run.
 
@@ -65,13 +71,27 @@ def load_held_out(n: int) -> list[dict]:
 
 
 def normalize(sql: str) -> str:
-    return re.sub(r"\s+", " ", (sql or "").lower().strip())
+    return re.sub(r"\s+", " ", (sql or "").lower().strip()).rstrip(";").strip()
 
 
-def first_line(raw: str) -> str:
-    """Same as the original evaluation: the first non empty line of the reply."""
+def full_statement(raw: str) -> str:
+    """
+    The whole first SQL statement in a reply, joined onto one line. The fine
+    tuned model answers on one line; chat models often spread a query over
+    several lines, and scoring only the first line would cut them off.
+    """
     text = (raw or "").replace("```sql", "").replace("```", "").strip()
-    return text.split("\n")[0].strip()
+    lines = []
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line:
+            if lines:
+                break
+            continue
+        lines.append(line)
+        if line.endswith(";"):
+            break
+    return " ".join(lines).rstrip(";").strip()
 
 
 def executes(sql: str, schema: str) -> bool:
@@ -120,7 +140,7 @@ def run_backend(name: str, examples: list[dict], concurrency: int, throughput_n:
     rows, latencies, tok_in, tok_out = [], [], 0, 0
     for i, ex in enumerate(examples, 1):
         out = adapter.generate(ex["question"], ex["context"])
-        sql = first_line(out.get("raw_output", ""))
+        sql = full_statement(out.get("raw_output", ""))
         em = normalize(sql) == normalize(ex["answer"])
         ok = executes(sql, ex["context"])
         latencies.append(out["latency_ms"])
@@ -172,8 +192,8 @@ def run_backend(name: str, examples: list[dict], concurrency: int, throughput_n:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--backends", default="local,vllm,llamacpp,gpt-3.5-turbo",
-                        help="Comma list from: local, vllm, llamacpp, modal, gpt-3.5-turbo, gpt-4o-mini, gpt-4o")
+    parser.add_argument("--backends", default="local,vllm,llamacpp,gpt-4o-mini",
+                        help="Comma list from: local, vllm, llamacpp, modal, gpt-4o-mini, gpt-4o")
     parser.add_argument("-n", type=int, default=500, help="Held out examples, up to 2000")
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--throughput-n", type=int, default=100)
