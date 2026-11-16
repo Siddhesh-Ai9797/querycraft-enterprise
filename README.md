@@ -59,6 +59,10 @@ flowchart TD
 5. **Answer.** The query runs on the Chinook database, and GPT-3.5-turbo turns the rows into a plain answer.
 6. **Score.** A quality score combines model confidence, how complete the result looks, and query complexity. Answers under 0.6 are flagged, and everything is logged to MLflow and shown on a Streamlit dashboard.
 
+## Live demo
+
+The hosted demo runs the fine tuned model on Modal and the agents plus a web page on Railway. `Dockerfile` builds a small serving image with no torch, `railway.json` sets the health check, and on first start `scripts/seed_chinook.py` loads the Chinook data into an empty database. Railway needs these variables: `DATABASE_URL` from its PostgreSQL service, `OPENAI_API_KEY` for the answer step, and `MODAL_URL` plus `MODAL_API_KEY` for the model. A per visitor limit and a daily cap keep the demo's GPU and OpenAI costs bounded.
+
 ## Serving the fine tuned model
 
 The SQL generator can run the fine tuned Phi-3 Mini four ways, chosen with `INFERENCE_BACKEND`. gpt-4o-mini is available as `openai`, the baseline every option is measured against. OpenAI has retired gpt-3.5-turbo.

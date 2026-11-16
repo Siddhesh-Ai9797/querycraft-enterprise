@@ -19,6 +19,7 @@ from core.quality_monitor import QualityMonitor
 load_dotenv()
 
 MAX_RETRIES = 2
+PREVIEW_ROWS = 25
 
 
 def make_sql_adapter(backend: str):
@@ -45,7 +46,10 @@ def make_sql_adapter(backend: str):
 
 class QueryCraftPipeline:
     def __init__(self):
-        engine = create_engine(os.getenv("DATABASE_URL"))
+        db_url = os.getenv("DATABASE_URL", "")
+        if db_url.startswith("postgres://"):
+            db_url = "postgresql://" + db_url[len("postgres://"):]
+        engine = create_engine(db_url, pool_pre_ping=True)
         from agents.schema_discovery  import SchemaDiscoveryAgent
         from agents.sql_validator     import SQLValidatorAgent
         from agents.sql_executor      import SQLExecutorAgent
@@ -79,10 +83,15 @@ class QueryCraftPipeline:
         if not self._initialized:
             self.initialize()
         pipeline_start = time.time()
+        steps = {}
         with mlflow.start_run(run_name=f"query_{int(time.time())}"):
             mlflow.log_param("question", question[:250])
             mlflow.log_param("sql_backend", self.inference_backend)
+            t = time.time()
             schema_result  = self._schema_step.invoke({"question": question})
+            steps["schema_ms"] = int((time.time() - t) * 1000)
+            steps["generate_ms"] = 0
+            steps["validate_ms"] = 0
             mlflow.log_param("tables_used", str(schema_result["tables_used"]))
             schema         = schema_result["schema"]
             sql            = None
@@ -90,12 +99,16 @@ class QueryCraftPipeline:
             error_feedback = None
             while attempts < MAX_RETRIES:
                 attempts += 1
+                t = time.time()
                 gen_result    = self._generate_step.invoke(
                     {"question": question, "schema": schema, "error_feedback": error_feedback})
+                steps["generate_ms"] += int((time.time() - t) * 1000)
                 candidate_sql = gen_result["sql"]
                 mlflow.log_metric(f"attempt_{attempts}_latency_ms", gen_result["latency_ms"])
                 mlflow.log_param(f"attempt_{attempts}_sql", candidate_sql[:250])
+                t = time.time()
                 val_result = self._validate_step.invoke({"sql": candidate_sql})
+                steps["validate_ms"] += int((time.time() - t) * 1000)
                 if val_result["valid"]:
                     sql = candidate_sql
                     break
@@ -108,12 +121,19 @@ class QueryCraftPipeline:
             if sql is None:
                 total_ms = int((time.time()-pipeline_start)*1000)
                 mlflow.log_metric("success", 0)
-                return self._error_result(question, error_feedback, attempts, total_ms)
+                result = self._error_result(question, error_feedback, attempts, total_ms)
+                result["steps"] = steps
+                result["tables_used"] = schema_result["tables_used"]
+                return result
+            t = time.time()
             exec_result  = self._execute_step.invoke({"sql": sql})
+            steps["execute_ms"] = int((time.time() - t) * 1000)
             mlflow.log_metric("row_count",    exec_result["row_count"])
             mlflow.log_metric("execution_ms", exec_result["execution_ms"])
+            t = time.time()
             synth_result = self._synthesize_step.invoke(
                 {"question": question, "sql": sql, "execution_result": exec_result})
+            steps["answer_ms"] = int((time.time() - t) * 1000)
             total_ms     = int((time.time()-pipeline_start)*1000)
             quality_result = self.quality_monitor.score(
                 {"success": True, "confidence": synth_result["confidence"], "sql": sql},
@@ -133,6 +153,10 @@ class QueryCraftPipeline:
                 "tables_used": schema_result["tables_used"],
                 "schema_context": schema_result["schema"],
                 "total_ms": total_ms, "attempts": attempts, "success": True, "error": None,
+                "columns": exec_result.get("columns", []),
+                "rows": exec_result.get("rows", [])[:PREVIEW_ROWS],
+                "row_count": exec_result.get("row_count", 0),
+                "steps": steps,
             }
 
     def _schema_step_fn(self, inputs):   return self.schema_agent.discover(inputs["question"])

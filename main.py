@@ -10,10 +10,14 @@ try:
 except ImportError:
     pass
 import os
+import threading
 import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from core.pipeline import QueryCraftPipeline
@@ -26,6 +30,9 @@ _start_time = time.time()
 async def lifespan(app: FastAPI):
     global pipeline
     print("Starting QueryCraft Enterprise API...")
+    if os.getenv("SEED_CHINOOK", "0") == "1":
+        from scripts.seed_chinook import seed
+        seed()
     pipeline = QueryCraftPipeline()
     pipeline.initialize()
     print("✅ API ready to serve requests")
@@ -51,12 +58,65 @@ class QueryResponse(BaseModel):
     success:        bool            = False
     error:          Optional[str]   = None
     flagged:        Optional[bool]  = None
+    columns:        list            = []
+    rows:           list            = []
+    row_count:      int             = 0
+    steps:          dict            = {}
+    sql_backend:    Optional[str]   = None
+    model:          Optional[str]   = None
 
 class HealthResponse(BaseModel):
     status: str; model: str; sql_backend: str; version: str; uptime_sec: float
 
-@app.get("/")
-def root():
+STATIC_DIR = Path(__file__).parent / "static"
+
+# ── Abuse limits for the public demo ─────────────────────────────────────
+# Every question costs a Modal GPU call and an OpenAI call, so cap how many
+# one visitor can ask per minute and how many the whole demo serves per day.
+PER_IP_PER_MINUTE = int(os.getenv("PER_IP_PER_MINUTE", "6"))
+DAILY_LIMIT       = int(os.getenv("DAILY_QUERY_LIMIT", "300"))
+_ip_calls: dict = defaultdict(deque)
+_daily = {"day": time.strftime("%Y-%m-%d"), "count": 0}
+_limit_lock = threading.Lock()
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    return forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "?")
+
+
+def _check_limits(request: Request):
+    now = time.time()
+    with _limit_lock:
+        today = time.strftime("%Y-%m-%d")
+        if _daily["day"] != today:
+            _daily.update(day=today, count=0)
+        if _daily["count"] >= DAILY_LIMIT:
+            raise HTTPException(status_code=429, detail="The demo has answered its daily limit of questions. Try again tomorrow.")
+        calls = _ip_calls[_client_ip(request)]
+        while calls and now - calls[0] > 60:
+            calls.popleft()
+        if len(calls) >= PER_IP_PER_MINUTE:
+            raise HTTPException(status_code=429, detail="Too many questions in a minute. Wait a moment and ask again.")
+        calls.append(now)
+        _daily["count"] += 1
+
+
+def _model_label(backend: str) -> str:
+    if backend == "openai":
+        return f"{os.getenv('OPENAI_SQL_MODEL', 'gpt-4o-mini')} baseline"
+    where = {"modal": "vLLM on a Modal L4 GPU", "vllm": "vLLM", "llamacpp": "llama.cpp, 4-bit on CPU",
+             "local": "local GPU, 4-bit"}.get(backend, backend)
+    return f"Fine tuned Phi-3 Mini 3.8B, {where}"
+
+
+@app.get("/", include_in_schema=False)
+def home():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api")
+def api_info():
     return {"service": "QueryCraft Enterprise API", "version": "1.0.0",
             "endpoints": {"query": "POST /query", "health": "GET /health", "docs": "GET /docs"}}
 
@@ -65,16 +125,19 @@ def health_check():
     if pipeline is None or not pipeline._initialized:
         raise HTTPException(status_code=503, detail="Pipeline not initialized")
     backend = pipeline.inference_backend
-    model = f"{os.getenv('OPENAI_SQL_MODEL', 'gpt-4o-mini')} baseline" if backend == "openai" else "querycraft-phi3-sql (fine tuned)"
-    return HealthResponse(status="healthy", model=model, sql_backend=backend,
+    return HealthResponse(status="healthy", model=_model_label(backend), sql_backend=backend,
                           version="1.0.0", uptime_sec=round(time.time()-_start_time, 1))
 
 @app.post("/query", response_model=QueryResponse)
-def query(request: QueryRequest):
+def query(request: QueryRequest, http_request: Request):
     if pipeline is None or not pipeline._initialized:
         raise HTTPException(status_code=503, detail="Pipeline not ready")
+    _check_limits(http_request)
     try:
         result = pipeline.run(request.question)
+        result.pop("schema_context", None)
+        result["sql_backend"] = pipeline.inference_backend
+        result["model"] = _model_label(pipeline.inference_backend)
         return QueryResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)[:200]}")
