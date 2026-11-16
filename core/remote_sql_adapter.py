@@ -50,7 +50,13 @@ class RemoteSQLAdapter:
     def load(self):
         if self._loaded:
             return
-        models = [m.id for m in self.client.models.list().data]
+        try:
+            models = [m.id for m in self.client.models.list().data]
+        except Exception as e:  # noqa: BLE001
+            # A sleeping Modal GPU or a slow network must not stop the app from
+            # starting. The first question wakes the server instead.
+            print(f"⚠️  {self.backend} server not reachable yet ({type(e).__name__}); will retry on first question")
+            return
         if self.model not in models:
             raise RuntimeError(f"{self.base_url} serves {models}, not {self.model}")
         self._loaded = True

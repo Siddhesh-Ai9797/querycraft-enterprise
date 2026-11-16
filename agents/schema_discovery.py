@@ -4,13 +4,29 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from core.schema_formatter import get_full_schema
 load_dotenv()
 
 COLLECTION_NAME = "chinook_schema"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-CHROMA_PATH     = "./chroma_db"
+CHROMA_PATH     = os.getenv("CHROMA_PATH", "./chroma_db")
+
+
+def make_embedding_function():
+    """
+    all-MiniLM-L6-v2 either way. With sentence-transformers installed it runs
+    on torch; otherwise Chroma's ONNX build of the same model runs on
+    onnxruntime, which keeps the serving image free of torch.
+    Returns (function, collection name), since the two builds must not share
+    one stored collection.
+    """
+    try:
+        import sentence_transformers  # noqa: F401
+        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+        return SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL), COLLECTION_NAME
+    except ImportError:
+        from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+        return DefaultEmbeddingFunction(), COLLECTION_NAME + "_onnx"
 
 class SchemaDiscoveryAgent:
     def __init__(self, engine):
@@ -18,14 +34,14 @@ class SchemaDiscoveryAgent:
         self.client       = None
         self.collection   = None
         self._ready       = False
-        self.embedding_fn = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
+        self.embedding_fn, self.collection_name = make_embedding_function()
 
     def initialize(self):
         if self._ready:
             return
         self.client     = chromadb.PersistentClient(path=CHROMA_PATH)
         self.collection = self.client.get_or_create_collection(
-            name=COLLECTION_NAME, embedding_function=self.embedding_fn,
+            name=self.collection_name, embedding_function=self.embedding_fn,
             metadata={"description": "Chinook database table schemas"}
         )
         if self.collection.count() == 0:
@@ -60,7 +76,7 @@ class SchemaDiscoveryAgent:
 
     def refresh(self):
         if self.collection:
-            self.client.delete_collection(COLLECTION_NAME)
+            self.client.delete_collection(self.collection_name)
         self._ready = False
         self.initialize()
 
